@@ -23,9 +23,13 @@ def send_cmd(s, sn, cmd):
             else:
                 status="off"
             name=b[9:9+b[8]].decode()
+            if b[9+b[8]] == 0:
+                online_status=" (offline)"
+            else:
+                online_status=""
             if name == "":
                 name = "[" + b[19:19+b[18]].decode() + "]"
-            print(name + ": " + status + ", short: 0x" + short.to_bytes(2, byteorder='big').hex() + ", ep: 0x" + ep)
+            print(name + ": " + status + ", short: 0x" + short.to_bytes(2, byteorder='big').hex() + ", ep: 0x" + ep + online_status)
             b = s.recv(2)
 
 def main():
