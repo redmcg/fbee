@@ -7,6 +7,11 @@ GET_ALL_DEVICES="81"
 SET_SWITCH_STATE="82"
 
 
+INVALID_CONFIG=-1
+INVALID_CMD=-2
+INVALID_ARGLIST=-3
+
+
 def send_cmd(s, sn, cmd):
     cmd = bytes.fromhex(cmd)
     b = sn + b"\xFE" + cmd
@@ -59,12 +64,15 @@ def main():
     parser.add_argument('--ip', '-i', dest='ip')
     parser.add_argument('--port', '-p', dest='port', type=int)
     parser.add_argument('--sn', '-s', dest='sn')
-    parser.add_argument('--raw', '-r', dest='raw', required=True)
+    parser.add_argument('cmd', help="The cmd to execute ('list' or 'raw')")
+    parser.add_argument('args', nargs='*', help="The args for the cmd")
     args = parser.parse_args()
 
     hexsn = args.sn
     ip = args.ip
     port = args.port
+    cmd = args.cmd
+    args = args.args
 
     if hexsn == None or ip == None or port == None:
         try:
@@ -83,15 +91,33 @@ def main():
 
     if hexsn == None or ip == None or port == None:
         print("Need to set sn, ip and port")
-        exit(1)
+        exit(INVALID_CONFIG)
+
+    if cmd == "list":
+        if len(args) > 0:
+            print("list takes no arguments")
+            exit(INVALID_ARGLIST)
+    elif cmd == "raw":
+        if len(args) > 1:
+            print("raw takes just one parameter. The data to send")
+            exit(INVALID_ARGLIST)
+        elif len(args) < 1:
+            print("raw requires one parameter. The data to send")
+            exit(INVALID_ARGLIST)
+    else:
+        print(cmd + " is not a valid cmd")
+        exit(INVALID_CMD)
 
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
     sn = bytes.fromhex(hexsn)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
     s.connect((ip, port))
-    ##send_cmd(s, sn, GET_ALL_DEVICES)
-    send_cmd(s, sn, args.raw[0])
+    if cmd == "list":
+        send_cmd(s, sn, GET_ALL_DEVICES)
+    elif cmd == "raw":
+        send_cmd(s, sn, args[0])
+
     s.close()
 
 if __name__ == "__main__":
