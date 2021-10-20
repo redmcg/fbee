@@ -56,15 +56,40 @@ def send_cmd(s, sn, cmd):
 
 def main():
     parser = argparse.ArgumentParser(description='Talk to hub!')
-    parser.add_argument('--ip', '-i', dest='ip', nargs=1, required=True)
-    parser.add_argument('--port', '-p', dest='port', type=int, nargs=1, required=True)
-    parser.add_argument('--serial-number', '-s', dest='sn', nargs=1, required=True)
-    parser.add_argument('--raw', '-r', dest='raw', nargs=1, required=True)
+    parser.add_argument('--ip', '-i', dest='ip')
+    parser.add_argument('--port', '-p', dest='port', type=int)
+    parser.add_argument('--sn', '-s', dest='sn')
+    parser.add_argument('--raw', '-r', dest='raw', required=True)
     args = parser.parse_args()
 
-    sn = bytes.fromhex(args.sn[0])
+    hexsn = args.sn
+    ip = args.ip
+    port = args.port
+
+    if hexsn == None or ip == None or port == None:
+        try:
+            with open('config') as config:
+                for line in config:
+                    name, val = line.partition("=")[::2]
+                    val = val.strip()
+                    if name == "ip" and ip == None:
+                        ip = val
+                    elif name == "port" and port == None:
+                        port = int(val)
+                    elif name == "sn" and hexsn == None:
+                        hexsn = val
+        except IOError as e:
+            pass
+
+    if hexsn == None or ip == None or port == None:
+        print("Need to set sn, ip and port")
+        exit(1)
+
+    print("sn: " + hexsn)
+    print("connecting to " + ip + ":" + str(port))
+    sn = bytes.fromhex(hexsn)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-    s.connect((args.ip[0], args.port[0]))
+    s.connect((ip, port))
     ##send_cmd(s, sn, GET_ALL_DEVICES)
     send_cmd(s, sn, args.raw[0])
     s.close()
