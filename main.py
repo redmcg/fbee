@@ -66,6 +66,8 @@ def main():
     parser.add_argument('--sn', '-s', dest='sn')
     parser.add_argument('cmd', help="The cmd to execute ('list' or 'raw')")
     parser.add_argument('args', nargs='*', help="The args for the cmd")
+
+    prog = parser.prog
     args = parser.parse_args()
 
     hexsn = args.sn
@@ -95,14 +97,20 @@ def main():
 
     if cmd == "list":
         if len(args) > 0:
+            print("usage: " + prog + " list")
             print("list takes no arguments")
             exit(INVALID_ARGLIST)
     elif cmd == "raw":
+        if len(args) != 1:
+            print("usage: " + prog + " raw <bytes>")
         if len(args) > 1:
-            print("raw takes just one parameter. The data to send")
-            exit(INVALID_ARGLIST)
+            print("raw takes just one parameter. The data to send (as a byte string)")
         elif len(args) < 1:
-            print("raw requires one parameter. The data to send")
+            print("raw requires one parameter. The data to send (as a byte string)")
+        if len(args) != 1:
+            print("bytes should only include the bytes after the control flag, for example:")
+            print(prog + " raw 81")
+            print("would get all currently connected devices")
             exit(INVALID_ARGLIST)
     else:
         print(cmd + " is not a valid cmd")
