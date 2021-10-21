@@ -2,6 +2,7 @@
 
 import socket
 import argparse
+import fileinput
 
 GET_ALL_DEVICES="81"
 SET_SWITCH_STATE="82"
@@ -19,6 +20,7 @@ CMD_LIST="list"
 CMD_RAW="raw"
 CMD_GET="get"
 CMD_SET="set"
+CMD_CMDLINE="cmdline"
 
 devices = {}
 
@@ -28,7 +30,9 @@ def get(short, ep):
 def set_cmd(short, ep, state):
     return SET_SWITCH_STATE + "0D02" + short[2:4] + short[0:2] + ("0" * 12) + ep + "0000" + state
 
-def recv(s, print_resp=True):
+def recv(print_resp=True):
+    global s
+    global devices
     b = s.recv(2)
     while len(b) == 2:
         resp = b[0]
@@ -76,13 +80,15 @@ def recv(s, print_resp=True):
 
         b = s.recv(2)
 
-def safe_recv(s, print_resp=True):
+def safe_recv(print_resp=True):
     try:
-        recv(s, print_resp)
+        recv(print_resp)
     except socket.timeout as e:
         pass
 
-def send_cmd(s, sn, cmd):
+def send_cmd(cmd):
+    global s
+    global sn
     cmd = bytes.fromhex(cmd)
     b = sn + b"\xFE" + cmd
     l = (len(b) + 2).to_bytes(2, byteorder='little')
@@ -94,13 +100,68 @@ def fmt(v, l):
     v = v.zfill(l)
     return v[:4]
 
+def validate_cmd(cmd, args):
+    if cmd == CMD_LIST or cmd == CMD_CMDLINE:
+        if len(args) > 0:
+            print("usage: " + prog + " " + cmd)
+            print(cmd + " takes no arguments")
+            return INVALID_ARGLIST
+    elif cmd == "raw":
+        if len(args) != 1:
+            print("usage: " + prog + " " + CMD_RAW + " <bytes>")
+        if len(args) > 1:
+            print(CMD_RAW + " takes just one parameter. The data to send (as a byte string)")
+        elif len(args) < 1:
+            print(CMD_RAW + " requires one parameter. The data to send (as a byte string)")
+        if len(args) != 1:
+            print("bytes should only include the bytes after the control flag, for example:")
+            print(prog + " " + CMD_RAW + " 81")
+            print("would get all currently connected devices")
+            return INVALID_ARGLIST
+    elif cmd == CMD_GET:
+        if len(args) != 2:
+            print("usage: " + prog + " " + CMD_GET + " <short> <ep>")
+            return INVALID_ARGLIST
+    elif cmd == CMD_SET:
+        if len(args) != 3:
+            print("usage: " + prog + " " + CMD_SET + " <short> <ep> <state>")
+            print("Where <state> is 0 for off and 1 for on")
+            return INVALID_ARGLIST
+    else:
+        print(cmd + " is not a valid cmd")
+        return INVALID_CMD 
+
+    return 0
+
+def run_cmd(cmd, args):
+    global sn
+    if cmd == CMD_GET or cmd == CMD_SET:
+        short = fmt(args[0], 4)
+        ep = fmt(args[1], 2)
+
+    if cmd == CMD_SET:
+        state = fmt(args[2], 2)
+
+    if cmd == CMD_LIST:
+        send_cmd(GET_ALL_DEVICES)
+    elif cmd == CMD_RAW:
+        send_cmd(args[0])
+    elif cmd == CMD_GET:
+        send_cmd(get(short, ep))
+    elif cmd == CMD_SET:
+        send_cmd(set_cmd(short, ep, state))
+
 def main():
+    global prog
+    global sn
+    global s
+
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
     parser.add_argument('--port', '-p', dest='port', type=int)
     parser.add_argument('--sn', '-s', dest='sn')
     parser.add_argument('--skip-device-fetch', '-d', dest='fetch_devices', action='store_false')
-    parser.add_argument('cmd', help="The cmd to execute ('" + CMD_LIST + "', '" + CMD_RAW + "', '" + CMD_GET + "' or '" + CMD_SET + "')")
+    parser.add_argument('cmd', help="The cmd to execute ('" + CMD_LIST + "', '" + CMD_RAW + "', '" + CMD_GET + "', '" + CMD_SET + "' or '" + CMD_CMDLINE + "')")
     parser.add_argument('args', nargs='*', help="The args for the cmd")
 
     prog = parser.prog
@@ -112,6 +173,10 @@ def main():
     fetch_devices = args.fetch_devices
     cmd = args.cmd
     args = args.args
+
+    ret = validate_cmd(cmd, args)
+    if ret != 0:
+        exit(ret)
 
     if hexsn == None or ip == None or port == None:
         try:
@@ -132,36 +197,6 @@ def main():
         print("Need to set sn, ip and port")
         exit(INVALID_CONFIG)
 
-    if cmd == CMD_LIST:
-        if len(args) > 0:
-            print("usage: " + prog + " " + CMD_LIST)
-            print(CMD_LIST + " takes no arguments")
-            exit(INVALID_ARGLIST)
-    elif cmd == "raw":
-        if len(args) != 1:
-            print("usage: " + prog + " " + CMD_RAW + " <bytes>")
-        if len(args) > 1:
-            print(CMD_RAW + " takes just one parameter. The data to send (as a byte string)")
-        elif len(args) < 1:
-            print(CMD_RAW + " requires one parameter. The data to send (as a byte string)")
-        if len(args) != 1:
-            print("bytes should only include the bytes after the control flag, for example:")
-            print(prog + " " + CMD_RAW + " 81")
-            print("would get all currently connected devices")
-            exit(INVALID_ARGLIST)
-    elif cmd == CMD_GET:
-        if len(args) != 2:
-            print("usage: " + prog + " " + CMD_GET + " <short> <ep>")
-            exit(INVALID_ARGLIST)
-    elif cmd == CMD_SET:
-        if len(args) != 3:
-            print("usage: " + prog + " " + CMD_SET + " <short> <ep> <state>")
-            print("Where <state> is 0 for off and 1 for on")
-            exit(INVALID_ARGLIST)
-    else:
-        print(cmd + " is not a valid cmd")
-        exit(INVALID_CMD)
-
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
     sn = bytes.fromhex(hexsn)
@@ -170,25 +205,11 @@ def main():
     s.connect((ip, port))
     if cmd != CMD_LIST and fetch_devices:
         print("fetching device names", end="", flush=True)
-        send_cmd(s, sn, GET_ALL_DEVICES)
-        safe_recv(s, False)
+        send_cmd(GET_ALL_DEVICES)
+        safe_recv(False)
         print("")
 
-    if cmd == CMD_GET or cmd == CMD_SET:
-        short = fmt(args[0], 4)
-        ep = fmt(args[1], 2)
-
-    if cmd == CMD_SET:
-        state = fmt(args[2], 2)
-
-    if cmd == CMD_LIST:
-        send_cmd(s, sn, GET_ALL_DEVICES)
-    elif cmd == CMD_RAW:
-        send_cmd(s, sn, args[0])
-    elif cmd == CMD_GET:
-        send_cmd(s, sn, get(short, ep))
-    elif cmd == CMD_SET:
-        send_cmd(s, sn, set_cmd(short, ep, state))
+    run_cmd(cmd, args)
 
     safe_recv(s)
 
