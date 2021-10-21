@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
+import sys
 import socket
 import argparse
-import fileinput
 
 GET_ALL_DEVICES="81"
 SET_SWITCH_STATE="82"
@@ -103,28 +103,28 @@ def fmt(v, l):
 def validate_cmd(cmd, args):
     if cmd == CMD_LIST or cmd == CMD_CMDLINE:
         if len(args) > 0:
-            print("usage: " + prog + " " + cmd)
+            print("usage: " + prog +  cmd)
             print(cmd + " takes no arguments")
             return INVALID_ARGLIST
     elif cmd == "raw":
         if len(args) != 1:
-            print("usage: " + prog + " " + CMD_RAW + " <bytes>")
+            print("usage: " + prog + CMD_RAW + " <bytes>")
         if len(args) > 1:
             print(CMD_RAW + " takes just one parameter. The data to send (as a byte string)")
         elif len(args) < 1:
             print(CMD_RAW + " requires one parameter. The data to send (as a byte string)")
         if len(args) != 1:
             print("bytes should only include the bytes after the control flag, for example:")
-            print(prog + " " + CMD_RAW + " 81")
+            print(prog + CMD_RAW + " 81")
             print("would get all currently connected devices")
             return INVALID_ARGLIST
     elif cmd == CMD_GET:
         if len(args) != 2:
-            print("usage: " + prog + " " + CMD_GET + " <short> <ep>")
+            print("usage: " + prog + CMD_GET + " <short> <ep>")
             return INVALID_ARGLIST
     elif cmd == CMD_SET:
         if len(args) != 3:
-            print("usage: " + prog + " " + CMD_SET + " <short> <ep> <state>")
+            print("usage: " + prog + CMD_SET + " <short> <ep> <state>")
             print("Where <state> is 0 for off and 1 for on")
             return INVALID_ARGLIST
     else:
@@ -164,7 +164,7 @@ def main():
     parser.add_argument('cmd', help="The cmd to execute ('" + CMD_LIST + "', '" + CMD_RAW + "', '" + CMD_GET + "', '" + CMD_SET + "' or '" + CMD_CMDLINE + "')")
     parser.add_argument('args', nargs='*', help="The args for the cmd")
 
-    prog = parser.prog
+    prog = parser.prog + " "
     args = parser.parse_args()
 
     hexsn = args.sn
@@ -209,9 +209,24 @@ def main():
         safe_recv(False)
         print("")
 
-    run_cmd(cmd, args)
-
-    safe_recv(s)
+    if cmd == CMD_CMDLINE:
+        prog = ""
+        print("> ", end="", flush=True)
+        for line in sys.stdin:
+            line = line.strip()
+            line = line.split(" ")
+            cmd = line[0]
+            args = line[1:]
+            if cmd == "exit":
+                break
+            ret = validate_cmd(cmd, args)
+            if ret == 0:
+                run_cmd(cmd, args)
+                safe_recv(s)
+            print("> ", end="", flush=True)
+    else:
+        run_cmd(cmd, args)
+        safe_recv(s)
 
     s.close()
 
