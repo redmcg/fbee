@@ -98,7 +98,7 @@ def fmt(v, l):
     if len(v) > 2 and v[0:2] == "0x":
         v = v[2:]
     v = v.zfill(l)
-    return v[:4]
+    return v[:l]
 
 def validate_cmd(cmd, args):
     if cmd == CMD_LIST or cmd == CMD_CMDLINE:
@@ -167,6 +167,7 @@ def main():
     prog = parser.prog + " "
     args = parser.parse_args()
 
+
     hexsn = args.sn
     ip = args.ip
     port = args.port
@@ -197,9 +198,10 @@ def main():
         print("Need to set sn, ip and port")
         exit(INVALID_CONFIG)
 
+    hexsn = fmt(hexsn, 8)
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
-    sn = bytes.fromhex(hexsn)
+    sn = bytes.fromhex(hexsn[6:8] + hexsn[4:6] + hexsn[2:4] + hexsn[0:2])
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
     s.settimeout(1)
     s.connect((ip, port))
