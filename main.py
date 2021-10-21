@@ -6,10 +6,14 @@ import argparse
 GET_ALL_DEVICES="81"
 SET_SWITCH_STATE="82"
 
+ALL_DEVICES_RESP=0x01
+SWITCH_STATUS=0x07
 
 INVALID_CONFIG=-1
 INVALID_CMD=-2
 INVALID_ARGLIST=-3
+
+devices = {}
 
 
 def send_cmd(s, sn, cmd):
@@ -18,12 +22,14 @@ def send_cmd(s, sn, cmd):
     l = (len(b) + 2).to_bytes(2, byteorder='little')
     s.send(l + b)
 
-    if cmd[0] == int(GET_ALL_DEVICES, 16):
-        b = s.recv(2)
-        while len(b) == 2 and b[0] == 1:
-            b = s.recv(b[1])
+    b = s.recv(2)
+    while len(b) == 2:
+        resp = b[0]
+        b = s.recv(b[1])
+
+        if resp == ALL_DEVICES_RESP:
             short=int.from_bytes(b[0:2], byteorder='little')
-            ep=b[2:3].hex()
+            ep=b[2]
             if b[7] == 1:
                 status="on"
             else:
@@ -35,29 +41,22 @@ def send_cmd(s, sn, cmd):
                 online_status=""
             if name == "":
                 name = "[" + b[19:19+b[18]].decode() + "]"
-            print(name + ": " + status + ", short: 0x" + short.to_bytes(2, byteorder='big').hex() + ", ep: 0x" + ep + online_status)
-            b = s.recv(2)
 
-    if cmd[0] == int(SET_SWITCH_STATE, 16):
-        b = s.recv(2)
-        while len(b) == 2 and b[0] == 1:
-            b = s.recv(b[1])
+            devices[hex(short) + hex(ep)] = name
+            print(name + ": " + status + ", short: " + hex(short) + ", ep: " + hex(ep) + online_status)
+        elif resp == SWITCH_STATUS:
             short=int.from_bytes(b[0:2], byteorder='little')
-            ep=b[2:3].hex()
-            if b[7] == 1:
+            ep=b[2]
+            if b[3] == 1:
                 status="on"
             else:
                 status="off"
-            name=b[9:9+b[8]].decode()
-            if b[9+b[8]] == 0:
-                online_status=" (offline)"
-            else:
-                online_status=""
-            if name == "":
-                name = "[" + b[19:19+b[18]].decode() + "]"
-            print(name + ": " + status + ", short: 0x" + short.to_bytes(2, byteorder='big').hex() + ", ep: 0x" + ep + online_status)
-            b = s.recv(2)
+            name = devices[hex(short) + hex(ep)]
+            print(name + ": " + status + ", short: " + hex(short) + ", ep: " + hex(ep) + online_status)
+        else:
+            print("resp: " + hex(resp) + ": " + b.hex())
 
+        b = s.recv(2)
 
 def main():
     parser = argparse.ArgumentParser(description='Talk to hub!')
