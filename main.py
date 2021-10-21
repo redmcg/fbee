@@ -9,6 +9,7 @@ GET_SWITCH_STATE="85"
 
 ALL_DEVICES_RESP=0x01
 SWITCH_STATUS=0x07
+ACK=0x29
 
 INVALID_CONFIG=-1
 INVALID_CMD=-2
@@ -23,6 +24,9 @@ devices = {}
 
 def get(short, ep):
     return GET_SWITCH_STATE + "0002" + short[2:4] + short[0:2] + ("0" * 12) + ep + "0000"
+
+def set_cmd(short, ep, state):
+    return SET_SWITCH_STATE + "0D02" + short[2:4] + short[0:2] + ("0" * 12) + ep + "0000" + state
 
 def recv(s, print_resp=True):
     b = s.recv(2)
@@ -64,6 +68,8 @@ def recv(s, print_resp=True):
                 name = "[unknown]"
             if print_resp:
                 print(name + ": " + status + ", short: " + hex(short) + ", ep: " + hex(ep))
+        elif resp == ACK:
+            print("ACK")
         else:
             if print_resp:
                 print("resp: " + hex(resp) + ": " + b.hex())
@@ -81,6 +87,12 @@ def send_cmd(s, sn, cmd):
     b = sn + b"\xFE" + cmd
     l = (len(b) + 2).to_bytes(2, byteorder='little')
     s.send(l + b)
+
+def fmt(v, l):
+    if len(v) > 2 and v[0:2] == "0x":
+        v = v[2:]
+    v = v.zfill(l)
+    return v[:4]
 
 def main():
     parser = argparse.ArgumentParser(description='Talk to hub!')
@@ -162,14 +174,21 @@ def main():
         safe_recv(s, False)
         print("")
 
+    if cmd == CMD_GET or cmd == CMD_SET:
+        short = fmt(args[0], 4)
+        ep = fmt(args[1], 2)
+
+    if cmd == CMD_SET:
+        state = fmt(args[2], 2)
+
     if cmd == CMD_LIST:
         send_cmd(s, sn, GET_ALL_DEVICES)
     elif cmd == CMD_RAW:
         send_cmd(s, sn, args[0])
     elif cmd == CMD_GET:
-        send_cmd(s, sn, get(args[0], args[1]))
+        send_cmd(s, sn, get(short, ep))
     elif cmd == CMD_SET:
-        send_cmd(s, sn, get(args[0], args[1], args[2]))
+        send_cmd(s, sn, set_cmd(short, ep, state))
 
     safe_recv(s)
 
