@@ -92,6 +92,7 @@ def send_cmd(cmd):
     cmd = bytes.fromhex(cmd)
     b = sn + b"\xFE" + cmd
     l = (len(b) + 2).to_bytes(2, byteorder='little')
+    safe_recv(False)
     s.send(l + b)
 
 def fmt(v, l):
