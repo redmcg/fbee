@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import socket
 
 GET_ALL_DEVICES="81"
@@ -18,7 +16,7 @@ def fmt(v, l):
     return v[:l]
 
 class FBee():
-    def __init__(self, host, port, sn):
+    def __init__(self, host, port, sn, new_device_callback = None):
         self.connected = False
         self.host = host
         self.port = port
@@ -26,6 +24,7 @@ class FBee():
         self.devices = {}
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         self.s.settimeout(1)
+        self.new_device_callback = new_device_callback
 
     def connect(self):
         if not self.connected:
@@ -51,7 +50,13 @@ class FBee():
                 if name == "":
                     name = "[" + b[19:19+b[18]].decode() + "]"
 
-                self.devices[hex(short) + hex(ep)] = FBeeSwitch(self, name, short, ep, state)
+                key = hex(short) + hex(ep)
+                if key in self.devices:
+                    self.devices[key].set_state(state)
+                else:
+                    device = self.devices[hex(short) + hex(ep)] = FBeeSwitch(self, name, short, ep, state)
+                    if self.new_device_callback != None:
+                        self.new_device_callback(device)
             elif resp == SWITCH_STATUS:
                 short=int.from_bytes(b[0:2], byteorder='little')
                 ep=b[2]
@@ -60,7 +65,8 @@ class FBee():
                 if key in self.devices:
                     self.devices[key].set_state(state)
                 else:
-                    self.devices[key] = FBeeSwitch(self, "[Unknown] " + hex(short) + " " + hex(ep), short, ep, state)
+                    device = FBeeSwitch(self, "[Unknown] " + hex(short) + " " + hex(ep), short, ep, state)
+                    self.devices[key] = device
 
             b = self.s.recv(2)
 

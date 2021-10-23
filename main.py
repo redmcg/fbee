@@ -60,6 +60,11 @@ def print_device(d):
         state = "off"
     print(d.name + ": " + state + " short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2))
 
+def new_device_callback(device):
+    global printing
+    if printing:
+        print(".", end="", flush=True)
+
 def run_cmd(cmd, args):
     if cmd == CMD_GET or cmd == CMD_SET:
         short = fmt(args[0], 4)
@@ -86,6 +91,9 @@ def run_cmd(cmd, args):
 def main():
     global prog
     global fbee
+    global printing
+
+    printing = True
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
@@ -131,12 +139,14 @@ def main():
     hexsn = fmt(hexsn, 8)
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
-    fbee = FBee(ip, port, hexsn)
+    fbee = FBee(ip, port, hexsn, new_device_callback)
     fbee.connect()
     if cmd != CMD_LIST and fetch_devices:
         print("fetching device names", end="", flush=True)
         fbee.refresh_devices()
         print("")
+
+    printing = False
 
     if cmd == CMD_CMDLINE:
         prog = ""
