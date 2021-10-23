@@ -13,6 +13,7 @@ CMD_RAW="raw"
 CMD_GET="get"
 CMD_SET="set"
 CMD_CMDLINE="cmdline"
+CMD_FETCH="fetch"
 
 def fmt(v, l):
     if len(v) > 2 and v[0:2] == "0x":
@@ -55,14 +56,16 @@ def validate_cmd(cmd, args):
 
 def print_device(d):
     if d.state:
-        state = "on"
+        state = "💡"
     else:
-        state = "off"
-    print(d.name + ": " + state + " short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2))
+        state = "🌑"
 
-def new_device_callback(device):
-    global printing
-    if printing:
+    prefix = state + " " + d.name
+    print(prefix + (" " * (30 - len(prefix))) + "[short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2) + "]")
+
+def device_callback(device, newdevice):
+    global intcmd
+    if intcmd == "fetch":
         print(".", end="", flush=True)
 
 def run_cmd(cmd, args):
@@ -91,9 +94,7 @@ def run_cmd(cmd, args):
 def main():
     global prog
     global fbee
-    global printing
-
-    printing = True
+    global intcmd
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
@@ -110,7 +111,7 @@ def main():
     ip = args.ip
     port = args.port
     fetch_devices = args.fetch_devices
-    cmd = args.cmd
+    intcmd = cmd = args.cmd
     args = args.args
 
     ret = validate_cmd(cmd, args)
@@ -139,14 +140,14 @@ def main():
     hexsn = fmt(hexsn, 8)
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
-    fbee = FBee(ip, port, hexsn, new_device_callback)
+    fbee = FBee(ip, port, hexsn, device_callback)
     fbee.connect()
     if cmd != CMD_LIST and fetch_devices:
         print("fetching device names", end="", flush=True)
+        intcmd = CMD_FETCH
         fbee.refresh_devices()
+        intcmd = cmd
         print("")
-
-    printing = False
 
     if cmd == CMD_CMDLINE:
         prog = ""
@@ -161,11 +162,9 @@ def main():
             ret = validate_cmd(cmd, args)
             if ret == 0:
                 run_cmd(cmd, args)
-                fbee.safe_recv()
             print("> ", end="", flush=True)
     else:
         run_cmd(cmd, args)
-        fbee.safe_recv()
 
     fbee.close()
 
