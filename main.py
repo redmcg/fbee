@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
 
 import sys
-import socket
 import argparse
-
-GET_ALL_DEVICES="81"
-SET_SWITCH_STATE="82"
-GET_SWITCH_STATE="85"
-
-ALL_DEVICES_RESP=0x01
-SWITCH_STATUS=0x07
-ACK=0x29
+from fbee import FBee, FBeeSwitch
 
 INVALID_CONFIG=-1
 INVALID_CMD=-2
@@ -21,79 +13,6 @@ CMD_RAW="raw"
 CMD_GET="get"
 CMD_SET="set"
 CMD_CMDLINE="cmdline"
-
-devices = {}
-
-def get(short, ep):
-    return GET_SWITCH_STATE + "0002" + short[2:4] + short[0:2] + ("0" * 12) + ep + "0000"
-
-def set_cmd(short, ep, state):
-    return SET_SWITCH_STATE + "0D02" + short[2:4] + short[0:2] + ("0" * 12) + ep + "0000" + state
-
-def recv(print_resp=True):
-    global s
-    global devices
-    b = s.recv(2)
-    while len(b) == 2:
-        resp = b[0]
-        b = s.recv(b[1])
-
-        if resp == ALL_DEVICES_RESP:
-            short=int.from_bytes(b[0:2], byteorder='little')
-            ep=b[2]
-            if b[7] == 1:
-                status="on"
-            else:
-                status="off"
-            name=b[9:9+b[8]].decode()
-            if b[9+b[8]] == 0:
-                online_status=" (offline)"
-            else:
-                online_status=""
-            if name == "":
-                name = "[" + b[19:19+b[18]].decode() + "]"
-
-            devices[hex(short) + hex(ep)] = name
-            if print_resp:
-                print(name + ": " + status + ", short: " + hex(short) + ", ep: " + hex(ep) + online_status)
-            else:
-                print(".", end="", flush=True)
-        elif resp == SWITCH_STATUS:
-            short=int.from_bytes(b[0:2], byteorder='little')
-            ep=b[2]
-            if b[3] == 1:
-                status="on"
-            else:
-                status="off"
-            key = hex(short) + hex(ep)
-            if key in devices:
-                name = devices[key]
-            else:
-                name = "[unknown]"
-            if print_resp:
-                print(name + ": " + status + ", short: " + hex(short) + ", ep: " + hex(ep))
-        elif resp == ACK:
-            print("ACK")
-        else:
-            if print_resp:
-                print("resp: " + hex(resp) + ": " + b.hex())
-
-        b = s.recv(2)
-
-def safe_recv(print_resp=True):
-    try:
-        recv(print_resp)
-    except socket.timeout as e:
-        pass
-
-def send_cmd(cmd):
-    global s
-    global sn
-    cmd = bytes.fromhex(cmd)
-    b = sn + b"\xFE" + cmd
-    l = (len(b) + 2).to_bytes(2, byteorder='little')
-    safe_recv(False)
-    s.send(l + b)
 
 def fmt(v, l):
     if len(v) > 2 and v[0:2] == "0x":
@@ -134,8 +53,14 @@ def validate_cmd(cmd, args):
 
     return 0
 
+def print_device(d):
+    if d.state:
+        state = "on"
+    else:
+        state = "off"
+    print(d.name + ": " + state + " short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2))
+
 def run_cmd(cmd, args):
-    global sn
     if cmd == CMD_GET or cmd == CMD_SET:
         short = fmt(args[0], 4)
         ep = fmt(args[1], 2)
@@ -144,18 +69,23 @@ def run_cmd(cmd, args):
         state = fmt(args[2], 2)
 
     if cmd == CMD_LIST:
-        send_cmd(GET_ALL_DEVICES)
+        devices = fbee.refresh_devices()
+        for key in devices:
+            d = devices[key]
+            print_device(d)
     elif cmd == CMD_RAW:
-        send_cmd(args[0])
+        fbee.send_data(args[0])
     elif cmd == CMD_GET:
-        send_cmd(get(short, ep))
+        d = fbee.get_device(short, ep)
+        print_device(d)
     elif cmd == CMD_SET:
-        send_cmd(set_cmd(short, ep, state))
+        d = fbee.get_device(short, ep)
+        d.push_state(state)
+        print_device(d)
 
 def main():
     global prog
-    global sn
-    global s
+    global fbee
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
@@ -167,7 +97,6 @@ def main():
 
     prog = parser.prog + " "
     args = parser.parse_args()
-
 
     hexsn = args.sn
     ip = args.ip
@@ -202,14 +131,11 @@ def main():
     hexsn = fmt(hexsn, 8)
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
-    sn = bytes.fromhex(hexsn[6:8] + hexsn[4:6] + hexsn[2:4] + hexsn[0:2])
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-    s.settimeout(1)
-    s.connect((ip, port))
+    fbee = FBee(ip, port, hexsn)
+    fbee.connect()
     if cmd != CMD_LIST and fetch_devices:
         print("fetching device names", end="", flush=True)
-        send_cmd(GET_ALL_DEVICES)
-        safe_recv(False)
+        fbee.refresh_devices()
         print("")
 
     if cmd == CMD_CMDLINE:
@@ -225,13 +151,13 @@ def main():
             ret = validate_cmd(cmd, args)
             if ret == 0:
                 run_cmd(cmd, args)
-                safe_recv(s)
+                fbee.safe_recv()
             print("> ", end="", flush=True)
     else:
         run_cmd(cmd, args)
-        safe_recv(s)
+        fbee.safe_recv()
 
-    s.close()
+    fbee.close()
 
 if __name__ == "__main__":
     main()
