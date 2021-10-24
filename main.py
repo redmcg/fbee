@@ -96,6 +96,7 @@ def run_cmd(cmd, args):
         fbee.send_data(args[0])
     elif cmd == CMD_GET:
         d = fbee.get_device(short, ep)
+        d.poll_state()
         print_device(d)
     elif cmd == CMD_SET:
         d = fbee.get_device(short, ep)
