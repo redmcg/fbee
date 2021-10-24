@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import readline
 from fbee import FBee, FBeeSwitch
 
 INVALID_CONFIG=-1
@@ -63,12 +64,16 @@ def print_device(d):
     prefix = state + " " + d.name
     print(prefix + (" " * (30 - len(prefix))) + "[short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2) + "]")
 
-def device_callback(device, newdevice):
+def device_callback(device, newdev):
     global intcmd
-    if intcmd == "fetch":
+    if intcmd == CMD_FETCH:
         print(".", end="", flush=True)
+    elif intcmd == CMD_LIST:
+        print_device(device)
 
 def run_cmd(cmd, args):
+    global intcmd
+    intcmd = cmd
     if cmd == CMD_GET or cmd == CMD_SET:
         short = fmt(args[0], 4)
         ep = fmt(args[1], 2)
@@ -77,10 +82,10 @@ def run_cmd(cmd, args):
         state = fmt(args[2], 2)
 
     if cmd == CMD_LIST:
-        devices = fbee.refresh_devices()
-        for key in devices:
-            d = devices[key]
-            print_device(d)
+        intcmd = None
+        fbee.safe_recv()
+        intcmd = cmd
+        fbee.refresh_devices()
     elif cmd == CMD_RAW:
         fbee.send_data(args[0])
     elif cmd == CMD_GET:
@@ -90,6 +95,7 @@ def run_cmd(cmd, args):
         d = fbee.get_device(short, ep)
         d.push_state(state)
         print_device(d)
+    intcmd = None
 
 def main():
     global prog
@@ -151,18 +157,24 @@ def main():
 
     if cmd == CMD_CMDLINE:
         prog = ""
-        print("> ", end="", flush=True)
-        for line in sys.stdin:
+        while True:
+            line = input("> ")
             line = line.strip()
             line = line.split(" ")
             cmd = line[0]
             args = line[1:]
-            if cmd == "exit":
+            if "short:" in args:
+                args.remove("short:")
+            if "ep:" in args:
+                args.remove("ep:")
+            if cmd == "":
+                pass
+            elif cmd == "exit" or cmd == "quit":
                 break
-            ret = validate_cmd(cmd, args)
-            if ret == 0:
-                run_cmd(cmd, args)
-            print("> ", end="", flush=True)
+            else:
+                ret = validate_cmd(cmd, args)
+                if ret == 0:
+                    run_cmd(cmd, args)
     else:
         run_cmd(cmd, args)
 
