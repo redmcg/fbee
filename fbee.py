@@ -1,4 +1,6 @@
 import socket
+import threading
+from datetime import datetime
 
 GET_ALL_DEVICES="81"
 SET_SWITCH_STATE="82"
@@ -25,6 +27,7 @@ class FBee():
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         self.s.settimeout(1)
         self.device_callback = device_callback
+        self.async_thread = None
 
     def connect(self):
         if not self.connected:
@@ -39,7 +42,7 @@ class FBee():
 
     def recv(self):
         b = self.s.recv(2)
-        while len(b) == 2:
+        if len(b) == 2:
             resp = b[0]
             b = self.s.recv(b[1])
             if resp == ALL_DEVICES_RESP:
@@ -78,13 +81,30 @@ class FBee():
                 if self.device_callback != None:
                     self.device_callback(device, newdev)
 
-            b = self.s.recv(2)
+    def async_read(self, poll_interval):
+        poll_interval = int(poll_interval)
+        self.s.settimeout(poll_interval)
+        next_refresh = 0
+        while True:
+            now = datetime.now()
+            now = (now-datetime(1970,1,1)).total_seconds()
+            if next_refresh <= now:
+                self.refresh_devices()
+                next_refresh = now + poll_interval
+            self.s.settimeout(next_refresh - now)
+            try:
+                self.recv()
+            except socket.timeout as e:
+                pass
 
     def safe_recv(self):
-        try:
-            self.recv()
-        except socket.timeout as e:
-            pass
+        if self.async_thread != None:
+            return
+        while True:
+            try:
+                self.recv()
+            except socket.timeout as e:
+                break
 
     def refresh_devices(self):
         self.send_data(GET_ALL_DEVICES)
@@ -110,6 +130,11 @@ class FBee():
             self.poll_state(short, ep)
 
         return self.devices[key]
+
+    def start_async_read(self, poll_interval):
+        self.async_thread = threading.Thread(target=self.async_read, args=(poll_interval,))
+        self.async_thread.start()
+        return self.async_thread
 
     def close(self):
         self.s.close()

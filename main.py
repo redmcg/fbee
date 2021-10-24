@@ -15,6 +15,7 @@ CMD_GET="get"
 CMD_SET="set"
 CMD_CMDLINE="cmdline"
 CMD_FETCH="fetch"
+CMD_ASYNC="async"
 
 def fmt(v, l):
     if len(v) > 2 and v[0:2] == "0x":
@@ -49,6 +50,11 @@ def validate_cmd(cmd, args):
             print("usage: " + prog + CMD_SET + " <short> <ep> <state>")
             print("Where <state> is 0 for off and 1 for on")
             return INVALID_ARGLIST
+    elif cmd == CMD_ASYNC:
+        if len(args) != 1:
+            print("usage: " + prog + CMD_ASYNC + " <poll_interval>")
+            print("Where <poll_interval> is how often to send a list command in seconds")
+            return INVALID_ARGLIST
     else:
         print(cmd + " is not a valid cmd")
         return INVALID_CMD 
@@ -68,7 +74,7 @@ def device_callback(device, newdev):
     global intcmd
     if intcmd == CMD_FETCH:
         print(".", end="", flush=True)
-    elif intcmd == CMD_LIST:
+    elif intcmd == CMD_LIST or intcmd == CMD_ASYNC:
         print_device(device)
 
 def run_cmd(cmd, args):
@@ -148,7 +154,7 @@ def main():
     print("connecting to " + ip + ":" + str(port))
     fbee = FBee(ip, port, hexsn, device_callback)
     fbee.connect()
-    if cmd != CMD_LIST and fetch_devices:
+    if cmd != CMD_LIST and cmd != CMD_ASYNC and fetch_devices:
         print("fetching device names", end="", flush=True)
         intcmd = CMD_FETCH
         fbee.refresh_devices()
@@ -175,6 +181,9 @@ def main():
                 ret = validate_cmd(cmd, args)
                 if ret == 0:
                     run_cmd(cmd, args)
+    elif cmd == CMD_ASYNC:
+        t = fbee.start_async_read(args[0])
+        t.join()
     else:
         run_cmd(cmd, args)
 
