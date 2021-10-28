@@ -175,6 +175,9 @@ class FBeeSwitch():
     def get_name(self):
         return self.name
 
+    def get_key(self):
+        return hex(self.short) + hex(self.ep)
+
     def poll_state(self):
         self.fbee.poll_state(self.short, self.ep)
 
