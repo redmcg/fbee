@@ -153,7 +153,7 @@ def main():
     hexsn = fmt(hexsn, 8)
     print("sn: " + hexsn)
     print("connecting to " + ip + ":" + str(port))
-    fbee = FBee(ip, port, hexsn, device_callback)
+    fbee = FBee(ip, port, hexsn, [device_callback])
     fbee.connect()
     if cmd != CMD_LIST and cmd != CMD_ASYNC and fetch_devices:
         print("fetching device names", end="", flush=True)

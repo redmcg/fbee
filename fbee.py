@@ -18,7 +18,7 @@ def fmt(v, l):
     return v[:l]
 
 class FBee():
-    def __init__(self, host, port, sn, device_callback = None):
+    def __init__(self, host, port, sn, device_callbacks = []):
         self.connected = False
         self.host = host
         self.port = port
@@ -26,8 +26,11 @@ class FBee():
         self.devices = {}
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         self.s.settimeout(1)
-        self.device_callback = device_callback
+        self.device_callbacks = device_callbacks
         self.async_thread = None
+
+    def add_callback(self, callback):
+        self.device_callbacks += callback
 
     def connect(self):
         if not self.connected:
@@ -63,8 +66,8 @@ class FBee():
                     device = self.devices[hex(short) + hex(ep)] = FBeeSwitch(self, name, short, ep, state)
                     newdev = True
 
-                if self.device_callback != None:
-                    self.device_callback(device, newdev)
+                for callback in self.device_callbacks:
+                    callback(device, newdev)
             elif resp == SWITCH_STATUS:
                 short=int.from_bytes(b[0:2], byteorder='little')
                 ep=b[2]
@@ -78,8 +81,8 @@ class FBee():
                     device = self.devices[key] = FBeeSwitch(self, "[Unknown] " + hex(short) + " " + hex(ep), short, ep, state)
                     newdev = True
 
-                if self.device_callback != None:
-                    self.device_callback(device, newdev)
+                for callback in self.device_callbacks:
+                    callback(device, newdev)
 
     def async_read(self, poll_interval):
         poll_interval = int(poll_interval)
