@@ -10,6 +10,10 @@ ALL_DEVICES_RESP=0x01
 SWITCH_STATUS=0x07
 ACK=0x29
 
+STATE_NO_CHANGE=0
+STATE_NEW_DEV=1
+STATE_NEW_STATE=2
+
 def fmt(v, l):
     v = hex(v)
     if len(v) > 2 and v[0:2] == "0x":
@@ -59,15 +63,20 @@ class FBee():
                 key = hex(short) + hex(ep)
                 if key in self.devices:
                     device = self.devices[key]
+                    oldstate = device.get_state()
+                    oldname = device.get_name()
                     device.set_state(state)
                     device.set_name(name)
-                    newdev = False
+                    if oldstate == state and oldname == name:
+                        state = STATE_NO_CHANGE
+                    else:
+                        state = STATE_NEW_STATE
                 else:
                     device = self.devices[hex(short) + hex(ep)] = FBeeSwitch(self, name, short, ep, state)
-                    newdev = True
+                    state = STATE_NEW_DEV
 
                 for callback in self.device_callbacks:
-                    callback(device, newdev)
+                    callback(device, state)
             elif resp == SWITCH_STATUS:
                 short=int.from_bytes(b[0:2], byteorder='little')
                 ep=b[2]
@@ -75,14 +84,18 @@ class FBee():
                 key = hex(short) + hex(ep)
                 if key in self.devices:
                     device = self.devices[key]
+                    oldstate = device.get_state()
                     self.devices[key].set_state(state)
-                    newdev = False
+                    if oldstate == state:
+                        state = STATE_NO_CHANGE
+                    else:
+                        state = STATE_NEW_STATE
                 else:
                     device = self.devices[key] = FBeeSwitch(self, "[Unknown] " + hex(short) + " " + hex(ep), short, ep, state)
-                    newdev = True
+                    state = STATE_NEW_DEV
 
                 for callback in self.device_callbacks:
-                    callback(device, newdev)
+                    callback(device, state)
 
     def async_read(self, poll_interval):
         poll_interval = int(poll_interval)
@@ -158,6 +171,9 @@ class FBeeSwitch():
 
     def get_state(self):
         return self.state
+
+    def get_name(self):
+        return self.name
 
     def poll_state(self):
         self.fbee.poll_state(self.short, self.ep)

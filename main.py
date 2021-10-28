@@ -70,7 +70,7 @@ def print_device(d):
     prefix = state + " " + d.name
     print(prefix + (" " * (30 - len(prefix))) + "[short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2) + "]")
 
-def device_callback(device, newdev):
+def device_callback(device, state):
     global intcmd
     if intcmd == CMD_FETCH:
         print(".", end="", flush=True)
