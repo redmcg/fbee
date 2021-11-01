@@ -109,7 +109,7 @@ class FBee():
                 for callback in self.device_callbacks:
                     callback(device, state)
 
-    def async_read(self, poll_interval):
+    def async_read(self, poll_interval, disconnect_callback):
         poll_interval = int(poll_interval)
         self.s.settimeout(poll_interval)
         next_refresh = 0
@@ -131,6 +131,8 @@ class FBee():
             except OSError as e:
                 break
         self.async_thread = None
+        if disconnect_callback != None:
+            disconnect_callback(self)
 
     def safe_recv(self):
         if self.async_thread != None:
@@ -166,9 +168,11 @@ class FBee():
 
         return self.devices[key]
 
-    def start_async_read(self, poll_interval):
+    def start_async_read(self, poll_interval = 60, disconnect_callback = None):
+        if self.s == None:
+            raise NotConnected
         if self.async_thread == None:
-            self.async_thread = threading.Thread(target=self.async_read, args=(poll_interval,))
+            self.async_thread = threading.Thread(target=self.async_read, args=(poll_interval,disconnect_callback))
             self.async_thread.start()
         return self.async_thread
 

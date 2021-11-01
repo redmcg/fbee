@@ -110,7 +110,7 @@ def run_cmd(cmd, args):
         d.push_state(state)
         print_device(d)
     elif cmd == CMD_ASYNC:
-        fbee.start_async_read(args[0])
+        fbee.start_async_read(args[0], disconnect_callback = lambda f: print("Disconnected"))
     intcmd = None
 
 def main():
