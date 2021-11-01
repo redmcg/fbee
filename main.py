@@ -3,7 +3,7 @@
 import sys
 import argparse
 import readline
-from fbee import FBee, FBeeSwitch
+from fbee import FBee, FBeeSwitch, NotConnected
 
 INVALID_CONFIG=-1
 INVALID_CMD=-2
@@ -62,10 +62,17 @@ def validate_cmd(cmd, args):
     return 0
 
 def print_device(d):
-    if d.state:
-        state = "💡"
+    global ascii_only
+    if ascii_only:
+        if d.state:
+            state = "|"
+        else:
+            state = "o"
     else:
-        state = "🌑"
+        if d.state:
+            state = "💡"
+        else:
+            state = "🌑"
 
     prefix = state + " " + d.name
     print(prefix + (" " * (30 - len(prefix))) + "[short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2) + "]")
@@ -102,18 +109,22 @@ def run_cmd(cmd, args):
         d = fbee.get_device(short, ep)
         d.push_state(state)
         print_device(d)
+    elif cmd == CMD_ASYNC:
+        fbee.start_async_read(args[0])
     intcmd = None
 
 def main():
     global prog
     global fbee
     global intcmd
+    global ascii_only
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
     parser.add_argument('--port', '-p', dest='port', type=int)
     parser.add_argument('--sn', '-s', dest='sn')
     parser.add_argument('--skip-device-fetch', '-d', dest='fetch_devices', action='store_false')
+    parser.add_argument('--ascii-only', '-a', dest='ascii_only', action='store_true')
     parser.add_argument('cmd', help="The cmd to execute ('" + CMD_LIST + "', '" + CMD_RAW + "', '" + CMD_GET + "', '" + CMD_SET + "' or '" + CMD_CMDLINE + "')")
     parser.add_argument('args', nargs='*', help="The args for the cmd")
 
@@ -124,6 +135,7 @@ def main():
     ip = args.ip
     port = args.port
     fetch_devices = args.fetch_devices
+    ascii_only = args.ascii_only
     intcmd = cmd = args.cmd
     args = args.args
 
@@ -178,10 +190,17 @@ def main():
                 pass
             elif cmd == "exit" or cmd == "quit":
                 break
+            elif cmd == "close":
+                fbee.close()
+            elif cmd == "connect":
+                fbee.connect()
             else:
                 ret = validate_cmd(cmd, args)
                 if ret == 0:
-                    run_cmd(cmd, args)
+                    try:
+                        run_cmd(cmd, args)
+                    except NotConnected as ex:
+                        print("Not Connected: run 'connect'")
     elif cmd == CMD_ASYNC:
         t = fbee.start_async_read(args[0])
         t.join()

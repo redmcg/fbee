@@ -23,31 +23,43 @@ def fmt(v, l):
 
 class FBee():
     def __init__(self, host, port, sn, device_callbacks = []):
-        self.connected = False
         self.host = host
         self.port = port
         self.sn = bytes.fromhex(sn[6:8] + sn[4:6] + sn[2:4] + sn[0:2])
         self.devices = {}
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-        self.s.settimeout(1)
         self.device_callbacks = device_callbacks
+        self.m = threading.Lock()
+        self.s = None
         self.async_thread = None
 
     def add_callback(self, callback):
         self.device_callbacks += callback
 
     def connect(self):
-        if not self.connected:
-            self.connected = True
+        if self.s == None:
+            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+            self.s.settimeout(1)
             self.s.connect((self.host, self.port))
 
     def send_data(self, data):
         data = bytes.fromhex(data)
         b = self.sn + b"\xFE" + data
         l = (len(b) + 2).to_bytes(2, byteorder='little')
-        self.s.send(l + b)
+        self.m.acquire()
+        if self.s != None:
+            try:
+                self.s.send(l + b)
+            except OSError:
+                s.m.release()
+                raise NotConnected
+        else:
+           self.m.release()
+           raise NotConnected
+        self.m.release()
 
     def recv(self):
+        if self.s == None:
+            raise NotConnected
         b = self.s.recv(2)
         if len(b) == 2:
             resp = b[0]
@@ -105,13 +117,20 @@ class FBee():
             now = datetime.now()
             now = (now-datetime(1970,1,1)).total_seconds()
             if next_refresh <= now:
-                self.refresh_devices()
+                try:
+                    self.refresh_devices()
+                except NotConnected as e:
+                    break
                 next_refresh = now + poll_interval
+
             self.s.settimeout(next_refresh - now)
             try:
                 self.recv()
             except socket.timeout as e:
                 pass
+            except OSError as e:
+                break
+        self.async_thread = None
 
     def safe_recv(self):
         if self.async_thread != None:
@@ -148,12 +167,22 @@ class FBee():
         return self.devices[key]
 
     def start_async_read(self, poll_interval):
-        self.async_thread = threading.Thread(target=self.async_read, args=(poll_interval,))
-        self.async_thread.start()
+        if self.async_thread == None:
+            self.async_thread = threading.Thread(target=self.async_read, args=(poll_interval,))
+            self.async_thread.start()
         return self.async_thread
 
     def close(self):
-        self.s.close()
+        if self.s != None:
+            self.m.acquire()
+            try:
+                self.s.close()
+            except:
+                self.m.release()
+                raise
+            self.s = None
+            self.m.release()
+
 
 class FBeeSwitch():
     def __init__(self, fbee, name, short, ep, state):
@@ -188,3 +217,6 @@ class FBeeSwitch():
             state = int(state, 16)
         self.fbee.send_data(SET_SWITCH_STATE + "0D02" + short[2:4] + short[0:2] + ("0" * 12) + ep + "0000" + fmt(state, 2))
         self.fbee.safe_recv()
+
+class NotConnected(Exception):
+    pass
