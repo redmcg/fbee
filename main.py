@@ -3,6 +3,7 @@
 import sys
 import argparse
 import readline
+import curses
 from fbee import FBee, FBeeSwitch, NotConnected
 
 INVALID_CONFIG=-1
@@ -26,42 +27,49 @@ def fmt(v, l):
 def validate_cmd(cmd, args):
     if cmd == CMD_LIST or cmd == CMD_CMDLINE:
         if len(args) > 0:
-            print("usage: " + prog +  cmd)
-            print(cmd + " takes no arguments")
+            display("usage: " + prog +  cmd)
+            display(cmd + " takes no arguments")
             return INVALID_ARGLIST
     elif cmd == "raw":
         if len(args) != 1:
-            print("usage: " + prog + CMD_RAW + " <bytes>")
+            display("usage: " + prog + CMD_RAW + " <bytes>")
         if len(args) > 1:
-            print(CMD_RAW + " takes just one parameter. The data to send (as a byte string)")
+            display(CMD_RAW + " takes just one parameter. The data to send (as a byte string)")
         elif len(args) < 1:
-            print(CMD_RAW + " requires one parameter. The data to send (as a byte string)")
+            display(CMD_RAW + " requires one parameter. The data to send (as a byte string)")
         if len(args) != 1:
-            print("bytes should only include the bytes after the control flag, for example:")
-            print(prog + CMD_RAW + " 81")
-            print("would get all currently connected devices")
+            display("bytes should only include the bytes after the control flag, for example:")
+            display(prog + CMD_RAW + " 81")
+            display("would get all currently connected devices")
             return INVALID_ARGLIST
     elif cmd == CMD_GET:
         if len(args) != 2:
-            print("usage: " + prog + CMD_GET + " <short> <ep>")
+            display("usage: " + prog + CMD_GET + " <short> <ep>")
             return INVALID_ARGLIST
     elif cmd == CMD_SET:
         if len(args) != 3:
-            print("usage: " + prog + CMD_SET + " <short> <ep> <state>")
-            print("Where <state> is 0 for off and 1 for on")
+            display("usage: " + prog + CMD_SET + " <short> <ep> <state>")
+            display("Where <state> is 0 for off and 1 for on")
             return INVALID_ARGLIST
     elif cmd == CMD_ASYNC:
         if len(args) != 1:
-            print("usage: " + prog + CMD_ASYNC + " <poll_interval>")
-            print("Where <poll_interval> is how often to send a list command in seconds")
+            display("usage: " + prog + CMD_ASYNC + " <poll_interval>")
+            display("Where <poll_interval> is how often to send a list command in seconds")
             return INVALID_ARGLIST
     else:
-        print(cmd + " is not a valid cmd")
+        display(cmd + " is not a valid cmd")
         return INVALID_CMD 
 
     return 0
 
-def print_device(d):
+def display(string):
+    global stdscr
+    if stdscr == None:
+        print(string)
+    else:
+        stdscr.addstr(string + "\n")
+
+def display_device(d):
     global ascii_only
     if ascii_only:
         if d.state:
@@ -75,14 +83,19 @@ def print_device(d):
             state = "🌑"
 
     prefix = state + " " + d.name
-    print(prefix + (" " * (30 - len(prefix))) + "[short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2) + "]")
+    display(prefix + (" " * (30 - len(prefix))) + "[short: " + fmt(hex(d.short), 4) + " ep: " + fmt(hex(d.ep), 2) + "]")
 
 def device_callback(device, state):
     global intcmd
     if intcmd == CMD_FETCH:
         print(".", end="", flush=True)
     elif intcmd == CMD_LIST or intcmd == CMD_ASYNC:
-        print_device(device)
+        display_device(device)
+
+def raw_recv_callback(cmd, data):
+    global raw_recv_pad
+    if raw_recv_pad != None:
+        raw_recv_pad.addstr(hex(cmd) + ": " + data.hex() + " (" + str(len(data)) + ")\n")
 
 def run_cmd(cmd, args):
     global intcmd
@@ -101,16 +114,17 @@ def run_cmd(cmd, args):
         fbee.refresh_devices()
     elif cmd == CMD_RAW:
         fbee.send_data(args[0])
+        fbee.safe_recv()
     elif cmd == CMD_GET:
         d = fbee.get_device(short, ep)
         d.poll_state()
-        print_device(d)
+        display_device(d)
     elif cmd == CMD_SET:
         d = fbee.get_device(short, ep)
         d.push_state(state)
-        print_device(d)
+        display_device(d)
     elif cmd == CMD_ASYNC:
-        fbee.start_async_read(args[0], disconnect_callback = lambda f: print("Disconnected"))
+        fbee.start_async_read(args[0], disconnect_callback = lambda f: display("Disconnected"))
     intcmd = None
 
 def main():
@@ -118,6 +132,8 @@ def main():
     global fbee
     global intcmd
     global ascii_only
+    global raw_recv_pad
+    global stdscr
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
@@ -125,6 +141,7 @@ def main():
     parser.add_argument('--sn', '-s', dest='sn')
     parser.add_argument('--skip-device-fetch', '-d', dest='fetch_devices', action='store_false')
     parser.add_argument('--ascii-only', '-a', dest='ascii_only', action='store_true')
+    parser.add_argument('--curses', '-c', dest='curses', action='store_true')
     parser.add_argument('cmd', help="The cmd to execute ('" + CMD_LIST + "', '" + CMD_RAW + "', '" + CMD_GET + "', '" + CMD_SET + "' or '" + CMD_CMDLINE + "')")
     parser.add_argument('args', nargs='*', help="The args for the cmd")
 
@@ -137,7 +154,13 @@ def main():
     fetch_devices = args.fetch_devices
     ascii_only = args.ascii_only
     intcmd = cmd = args.cmd
+    curses_enabled = args.curses
     args = args.args
+
+    if curses_enabled:
+        stdscr = curses.initscr()
+    else:
+        stdscr = None
 
     ret = validate_cmd(cmd, args)
     if ret != 0:
@@ -159,12 +182,12 @@ def main():
             pass
 
     if hexsn == None or ip == None or port == None:
-        print("Need to set sn, ip and port")
+        display("Need to set sn, ip and port")
         exit(INVALID_CONFIG)
 
     hexsn = fmt(hexsn, 8)
-    print("sn: " + hexsn)
-    print("connecting to " + ip + ":" + str(port))
+    display("sn: " + hexsn)
+    display("connecting to " + ip + ":" + str(port))
     fbee = FBee(ip, port, hexsn, [device_callback])
     fbee.connect()
     if cmd != CMD_LIST and cmd != CMD_ASYNC and fetch_devices:
@@ -177,7 +200,10 @@ def main():
     if cmd == CMD_CMDLINE:
         prog = ""
         while True:
-            line = input("> ")
+            if curses_enabled:
+                line = stdscr.getstr()
+            else:
+                line = input("> ")
             line = line.strip()
             line = line.split(" ")
             cmd = line[0]
@@ -200,7 +226,7 @@ def main():
                     try:
                         run_cmd(cmd, args)
                     except NotConnected as ex:
-                        print("Not Connected: run 'connect'")
+                        display("Not Connected: run 'connect'")
     elif cmd == CMD_ASYNC:
         t = fbee.start_async_read(args[0])
         t.join()
