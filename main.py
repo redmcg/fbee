@@ -203,7 +203,13 @@ def main():
             if curses_enabled:
                 line = stdscr.getstr()
             else:
-                line = input("> ")
+                try:
+                    line = input("> ")
+                except EOFError:
+                    line = "exit"
+                    print("")
+                    pass
+
             line = line.strip()
             line = line.split(" ")
             cmd = line[0]
