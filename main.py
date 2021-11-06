@@ -4,6 +4,7 @@ import sys
 import argparse
 import readline
 import curses
+import time
 from fbee import FBee, FBeeSwitch, NotConnected
 
 INVALID_CONFIG=-1
@@ -62,12 +63,14 @@ def validate_cmd(cmd, args):
 
     return 0
 
-def display(string):
+def display(string, end="\n", flush=True):
     global stdscr
     if stdscr == None:
-        print(string)
+        print(string, end=end, flush=flush)
     else:
-        stdscr.addstr(string + "\n")
+        stdscr.addstr(str(string) + end)
+        if flush:
+            stdscr.refresh()
 
 def display_device(d):
     global ascii_only
@@ -88,7 +91,7 @@ def display_device(d):
 def device_callback(device, state):
     global intcmd
     if intcmd == CMD_FETCH:
-        print(".", end="", flush=True)
+        display(".", end="", flush=True)
     elif intcmd == CMD_LIST or intcmd == CMD_ASYNC:
         display_device(device)
 
@@ -128,12 +131,22 @@ def run_cmd(cmd, args):
     intcmd = None
 
 def main():
+    global curses_enabled
+
+    try:
+        run()
+    finally:
+        if curses_enabled:
+            curses.endwin()
+
+def run():
     global prog
     global fbee
     global intcmd
     global ascii_only
     global raw_recv_pad
     global stdscr
+    global curses_enabled
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
@@ -191,23 +204,24 @@ def main():
     fbee = FBee(ip, port, hexsn, [device_callback])
     fbee.connect()
     if cmd != CMD_LIST and cmd != CMD_ASYNC and fetch_devices:
-        print("fetching device names", end="", flush=True)
+        display("fetching device names", end="", flush=True)
         intcmd = CMD_FETCH
         fbee.refresh_devices()
         intcmd = cmd
-        print("")
+        display("")
 
     if cmd == CMD_CMDLINE:
         prog = ""
         while True:
             if curses_enabled:
-                line = stdscr.getstr()
+                display("> ", end="")
+                line = stdscr.getstr().decode()
             else:
                 try:
                     line = input("> ")
                 except EOFError:
                     line = "exit"
-                    print("")
+                    display("")
                     pass
 
             line = line.strip()
