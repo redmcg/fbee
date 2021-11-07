@@ -22,19 +22,23 @@ def fmt(v, l):
     return v[:l]
 
 class FBee():
-    def __init__(self, host, port, sn, device_callbacks = []):
+    def __init__(self, host, port, sn, device_callbacks = [], recv_callbacks = []):
         self.host = host
         self.port = port
         self.sn = bytes.fromhex(sn[6:8] + sn[4:6] + sn[2:4] + sn[0:2])
         self.devices = {}
         self.device_callbacks = device_callbacks
+        self.recv_callbacks = recv_callbacks
         self.m = threading.Lock()
         self.poll_interval = 60
         self.s = None
         self.async_thread = None
 
-    def add_callback(self, callback):
-        self.device_callbacks += callback
+    def add_device_callback(self, device_callback):
+        self.device_callbacks += device_callback
+
+    def add_recv_callback(self, recv_callback):
+        self.recv_callbacks += recv_callback
 
     def connect(self):
         if self.s == None:
@@ -65,6 +69,10 @@ class FBee():
         if len(b) == 2:
             resp = b[0]
             b = self.s.recv(b[1])
+
+            for callback in self.recv_callbacks:
+                callback(resp, b)
+
             if resp == ALL_DEVICES_RESP:
                 short=int.from_bytes(b[0:2], byteorder='little')
                 ep=b[2]
