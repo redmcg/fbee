@@ -34,10 +34,10 @@ class FBee():
         self.s = None
         self.async_thread = None
 
-    def add_device_callback(self, device_callback):
+    def add_device_callbacks(self, device_callback):
         self.device_callbacks += device_callback
 
-    def add_recv_callback(self, recv_callback):
+    def add_recv_callbacks(self, recv_callback):
         self.recv_callbacks += recv_callback
 
     def connect(self):
@@ -65,6 +65,7 @@ class FBee():
     def recv(self):
         if self.s == None:
             raise NotConnected
+
         b = self.s.recv(2)
         if len(b) == 2:
             resp = b[0]
@@ -188,16 +189,15 @@ class FBee():
         return self.async_thread
 
     def close(self):
+        self.m.acquire()
         if self.s != None:
-            self.m.acquire()
             try:
                 self.s.close()
-            except:
+            finally:
                 self.m.release()
-                raise
             self.s = None
+        else:
             self.m.release()
-
 
 class FBeeSwitch():
     def __init__(self, fbee, name, short, ep, state):

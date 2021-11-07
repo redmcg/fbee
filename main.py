@@ -64,13 +64,11 @@ def validate_cmd(cmd, args):
     return 0
 
 def display(string, end="\n", flush=True):
-    global stdscr
-    if stdscr == None:
+    global cmdscr
+    if cmdscr == None:
         print(string, end=end, flush=flush)
     else:
-        stdscr.addstr(str(string) + end)
-        if flush:
-            stdscr.refresh()
+        cmdscr.display_bottom(string, end=end, flush=flush)
 
 def display_device(d):
     global ascii_only
@@ -94,11 +92,6 @@ def device_callback(device, state):
         display(".", end="", flush=True)
     elif intcmd == CMD_LIST or intcmd == CMD_ASYNC:
         display_device(device)
-
-def raw_recv_callback(cmd, data):
-    global raw_recv_pad
-    if raw_recv_pad != None:
-        raw_recv_pad.addstr(hex(cmd) + ": " + data.hex() + " (" + str(len(data)) + ")\n")
 
 def run_cmd(cmd, args):
     global intcmd
@@ -130,6 +123,54 @@ def run_cmd(cmd, args):
         fbee.start_async_read(args[0], disconnect_callback = lambda f: display("Disconnected"))
     intcmd = None
 
+class Display():
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        self.top = ScrollingDisplay(stdscr)
+        self.bottom = ScrollingDisplay(stdscr, False)
+
+    def display_top(self, string, end = "\n", flush = True):
+        self.top.display(string, end, flush)
+        if flush:
+            self.refresh()
+
+    def display_bottom(self, string, end = "\n", flush = True):
+        self.bottom.display(string, end, flush)
+        if flush:
+            self.refresh()
+
+    def refresh(self):
+        self.top.noutrefresh()
+        self.stdscr.hline(int((curses.LINES - 1) / 2), 0, '-', curses.COLS)
+        self.stdscr.noutrefresh()
+        self.bottom.noutrefresh()
+        curses.doupdate()
+
+    def getstr(self):
+        return self.bottom.getstr()
+
+class ScrollingDisplay():
+    def __init__(self, stdscr, top = True):
+        self.stdscr = stdscr
+        self.top = top
+        if self.top:
+            y  = 0
+        else:
+            y = int((curses.LINES - 1) / 2) + 1
+
+        self.disp = stdscr.derwin(int(curses.LINES / 2), curses.COLS - 1, y, 0)
+        self.disp.idlok(True)
+        self.disp.scrollok(True)
+
+    def display(self, string, end = "\n", flush = True):
+        self.disp.addstr(str(string) + end)
+
+    def getstr(self):
+        return self.disp.getstr()
+
+    def noutrefresh(self):
+        self.disp.noutrefresh()
+
 def main():
     global curses_enabled
 
@@ -137,6 +178,8 @@ def main():
         run()
     finally:
         if curses_enabled:
+            curses.nocbreak()
+            curses.echo()
             curses.endwin()
 
 def run():
@@ -144,9 +187,9 @@ def run():
     global fbee
     global intcmd
     global ascii_only
-    global raw_recv_pad
-    global stdscr
+    global cmdscr
     global curses_enabled
+    curses_enabled = False
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
@@ -169,11 +212,6 @@ def run():
     intcmd = cmd = args.cmd
     curses_enabled = args.curses
     args = args.args
-
-    if curses_enabled:
-        stdscr = curses.initscr()
-    else:
-        stdscr = None
 
     ret = validate_cmd(cmd, args)
     if ret != 0:
@@ -199,9 +237,16 @@ def run():
         exit(INVALID_CONFIG)
 
     hexsn = fmt(hexsn, 8)
+    fbee = FBee(ip, port, hexsn, [device_callback])
+    if curses_enabled:
+        stdscr = curses.initscr()
+        cmdscr = Display(stdscr)
+        fbee.add_recv_callbacks([lambda resp, b : cmdscr.display_top(hex(resp) + ": " + b.hex())])
+    else:
+        cmdscr = None
+
     display("sn: " + hexsn)
     display("connecting to " + ip + ":" + str(port))
-    fbee = FBee(ip, port, hexsn, [device_callback])
     fbee.connect()
     if cmd != CMD_LIST and cmd != CMD_ASYNC and fetch_devices:
         display("fetching device names", end="", flush=True)
@@ -215,7 +260,7 @@ def run():
         while True:
             if curses_enabled:
                 display("> ", end="")
-                line = stdscr.getstr().decode()
+                line = cmdscr.getstr().decode()
             else:
                 try:
                     line = input("> ")
