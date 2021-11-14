@@ -172,12 +172,12 @@ class ScrollingDisplay():
         self.disp.noutrefresh()
 
 def main():
-    global curses_enabled
+    global cmdscr
 
     try:
         run()
     finally:
-        if curses_enabled:
+        if cmdscr != None:
             curses.nocbreak()
             curses.echo()
             curses.endwin()
@@ -188,8 +188,7 @@ def run():
     global intcmd
     global ascii_only
     global cmdscr
-    global curses_enabled
-    curses_enabled = False
+    cmdscr = None
 
     parser = argparse.ArgumentParser(description='Talk to hub!')
     parser.add_argument('--ip', '-i', dest='ip')
